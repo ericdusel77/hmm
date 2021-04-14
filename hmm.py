@@ -8,10 +8,10 @@ class hmm():
         self.B     = self.model["B"] #emission probability matrix EPM
         self.pi    = self.model["pi"] #initial state prob distribution PI
 
-        self.states         = list(self.A.keys())
+        self.states   = list(self.A.keys())
         self.symbols  = list(list(self.B.values())[0].keys())
-        self.N = len(self.states)
-        self.M = len(self.symbols)
+        self.N        = len(self.states)
+        self.M        = len(self.symbols)
 
         return
 
