@@ -106,30 +106,57 @@ class hmm():
     def baumwelch(self, obs):
         gamma = []
         xi = []
-        new_pi = {}
+        
         # create alpha and beta tables 
-        denominator = self.forward(obs)
+        denominator = self.forward(obs) # use P(O | HMM) for calculating xi and gamma
         self.backward(obs)
         
+        # calculate xi and gamma values
+        # stop at second to last time step, since we can't get a xi for the last state, since there is no j
+        # goes from t=0:T-2 for O(1):O(T-1)
         for t in range(len(obs)-1):
-            new_xi = {}
+            new_xi = {} # xi and gamma list objects for this time setp
             new_gamma = {}
             for i in self.states:
-                summation = 0
-                new_xi[i] = {}
+                summation = 0.0
+                new_xi[i] = {} # initialize the xi's for this i at this time step
                 for j in self.states:
-                    numerator = ( self.alpha[t][i] * self.A[i][j] * self.B[j][obs[t+1]] * self.beta[t+1][j] ) / denominator
-                    new_xi[i][j] = numerator / denominator
-                    summation += new_xi[i][j]
+                    numerator = ( self.alpha[t][i] * self.A[i][j] * self.B[j][obs[t+1]] * self.beta[t+1][j]  ) # prob of being in i at t, and j at t+1
+                    new_xi[i][j] = numerator / denominator # normalize by the probability of this Obs set given our current model for every transition at any state
+                    summation += new_xi[i][j] # sum of xi for every state j that we can go to is equal to gamma
                 new_gamma[i] = summation
             xi.append(new_xi)
             gamma.append(new_gamma)
+        
+        pi_tilde = {} # expected frequency in state i at time t=0
         final_gamma = {}
         for i in self.states:
-            final_gamma[i] = ( self.alpha[len(obs)-1][i] * self.beta[len(obs)-1][i] ) / denominator
+            pi_tilde[i] = gamma[0][i] # find gamma for first time step
+            final_gamma[i] = ( self.alpha[len(obs)-1][i] * self.beta[len(obs)-1][i] ) / denominator # find final gamma value for lat time step T
         gamma.append(final_gamma)
-        
-        for t in range(len(obs)):
-            sum_gamma = sum (gamma[t][y] for y in self.states )
-            print(sum_gamma)
 
+        a_tilde = {}
+        for i in self.states:
+            # initialize a_tilde for this i state
+            a_tilde[i] = {}
+            a_denom = sum( gamma[t][i] for t in range(len(obs) - 1) ) #  expected number of transitions from state i
+            for j in self.states:
+                numer = sum( xi[t][i][j] for t in range(len(obs) - 1) ) #  expected number of transitions from state i TO state j
+                a_tilde[i][j] = numer / a_denom
+        
+        b_tilde = {}
+        for i in self.states:
+            b_tilde[i] = {}
+            b_denom = sum( gamma[t][i] for t in range(len(obs)) ) #  expected number of times in state i
+            for k in self.symbols:
+                summation = 0.0
+                # this goes from index 0:T-1 or O(1):O(T)
+                for t in range(len(obs)):
+                    if obs[t] == k:  # expected number of times in state i and observing symbol k
+                        summation += gamma[t][i]
+                b_tilde[i][k] = summation / b_denom
+                
+        self.A = a_tilde
+        self.B = b_tilde
+        self.pi = pi_tilde
+        return
