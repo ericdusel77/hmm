@@ -160,3 +160,23 @@ class hmm():
         self.B = b_tilde
         self.pi = pi_tilde
         return
+
+    def runEM(self, observations, iterations, output_file_name):
+        # print(self.A)
+        # print(self.B)
+        # print(self.pi)
+        for t in range(iterations):
+            self.baumwelch(observations)
+            # print('-----------------------')
+            # print(self.A)
+            # print(self.B)
+            # print(self.pi)
+
+        hmm_write  = {}
+        hmm_write['hmm'] = {}
+        hmm_write['hmm']['A'] = self.A
+        hmm_write['hmm']['B'] = self.B
+        hmm_write['hmm']['pi'] = self.pi
+
+        with open(output_file_name, 'w') as outfile:
+            json.dump(hmm_write, outfile)
