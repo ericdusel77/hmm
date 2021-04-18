@@ -1,7 +1,7 @@
 from hmm import *
 
 if __name__ == '__main__':
-    test_hmm = hmm("test_model.json")
+    test_hmm = hmm("hmm_json_files/test_model.json")
 
     
 
@@ -37,8 +37,8 @@ if __name__ == '__main__':
 
     summyb={}
     for i in test_hmm.states:
-        summya[i] =  sum( test_hmm.B[i][k] for k in test_hmm.symbols )
-    print(summya)
+        summyb[i] =  sum( test_hmm.B[i][k] for k in test_hmm.symbols )
+    print(summyb)
 
     summypi =  sum( test_hmm.pi[s] for s in test_hmm.states )
     print(summypi)

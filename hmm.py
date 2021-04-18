@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 class hmm():
     def __init__(self, model_name):
@@ -161,17 +162,27 @@ class hmm():
         self.pi = pi_tilde
         return
 
-    def runEM(self, observations, iterations, output_file_name):
-        # print(self.A)
-        # print(self.B)
-        # print(self.pi)
-        for t in range(iterations):
+    def runEM(self, observations):
+        counter = 1
+        while(1):
+            prev_hmm = deepcopy(self)
             self.baumwelch(observations)
-            # print('-----------------------')
-            # print(self.A)
-            # print(self.B)
-            # print(self.pi)
+            # check first state for convergence
+            if self.A == prev_hmm.A:
+                print('Found Convergence at iteration: ', counter)
+                for j in self.states:
+                    for k in self.states:
+                        if self.A[j][k] != prev_hmm.A[j][k]:
+                            print("State ",j," to state ",k,"didn't match")
 
+                break
+            elif counter == 100:
+                print('Completed ',counter,' iterations, no convergence')
+                break
+
+            counter += 1
+
+    def hmm2json(self, output_file_name):
         hmm_write  = {}
         hmm_write['hmm'] = {}
         hmm_write['hmm']['A'] = self.A
@@ -180,3 +191,4 @@ class hmm():
 
         with open(output_file_name, 'w') as outfile:
             json.dump(hmm_write, outfile)
+
