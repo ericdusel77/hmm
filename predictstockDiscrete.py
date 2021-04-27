@@ -23,11 +23,32 @@ def get_stock_observations(ticker, start_end):
         date = data.iat[t, data.columns.get_loc('Date')]
 
         change = (close_price - open_price) / open_price
-        high = (high_price - open_price) / open_price
-        low = (open_price - low_price) / open_price 
+        # high = (high_price - open_price) / open_price
+        # low = (open_price - low_price) / open_price 
 
-        new_observation = [change, high, low]
-        # new_observation = [change]
+        # if change > 0:
+        #     obs = 1
+        # else:
+        #     obs = 0
+        if change >= 0.04:
+            obs = 5
+        elif change < 0.04 and change >= 0.02:
+            # obs = 'medium_gainz'
+            obs = 4
+        elif change < 0.02 and change > 0:
+            # obs = 'little_gainz'
+            obs = 3
+        elif change <= 0 and change > -0.02:
+            # obs = 'little_loss'
+            obs = 2
+        elif change <= 0.02 and change > -0.05:
+            # obs = 'medium_loss'
+            obs = 1
+        elif change <= -0.05:
+            # obs = 'large_loss'
+            obs = 0
+        # new_observation = [change, high, low]
+        new_observation = [obs]
         observations.append(new_observation)
         dates.append(date)
         open_prices.append(open_price)
@@ -35,17 +56,19 @@ def get_stock_observations(ticker, start_end):
     return observations, dates, open_prices, close_prices
 
 class predictStock(object):
-    def __init__(self, ticker, train_dates, test_dates, n_latency_days=10, n_hidden_states=4, n_steps_frac_change=50, n_steps_frac_high=10, n_steps_frac_low=10):
+    def __init__(self, ticker, train_dates, test_dates, n_latency_days=10, n_hidden_states=4):
         self.ticker = ticker
         self.n_latency_days = n_latency_days
         
         self.train_x, self.train_dates, _, _ = get_stock_observations(self.ticker, train_dates)
 
         self.test_x, self.test_dates, self.test_opens, self.test_close = get_stock_observations(self.ticker, test_dates)
-        self.hmm = hmm.GaussianHMM(n_components=n_hidden_states, n_iter=1000)
-        # self.hmm = hmm.GMMHMM(n_components=n_hidden_states, n_mix=4, n_iter=1000)
 
-        self.all_outcomes(n_steps_frac_change,n_steps_frac_high,n_steps_frac_low)
+        self.hmm = hmm.MultinomialHMM(n_components=n_hidden_states, n_iter=1000)
+        # self.hmm = hmm.GaussianHMM(n_components=n_hidden_states, n_iter=1000)
+        # self.hmm = hmm.GMMHMM(n_components=n_hidden_states, n_mix=4, n_iter=1000)
+        
+        self.all_outcomes()
 
     def fit(self, lengths_val):
         lengths = []
@@ -57,13 +80,11 @@ class predictStock(object):
             lengths.append(remaining_data)
         self.hmm.fit(self.train_x,lengths)
 
+
     # find all outcomes given the range defined here calculations = n_steps_frac_change * n_steps_frac_high * n_steps_frac_low
-    def all_outcomes(self, n_steps_frac_change, n_steps_frac_high, n_steps_frac_low):
-        frac_change_range = np.linspace(-0.1, 0.1, n_steps_frac_change)
-        frac_high_range = np.linspace(0, 0.1, n_steps_frac_high)
-        frac_low_range = np.linspace(0, 0.1, n_steps_frac_low)
-        self.outcomes = np.array(list(itertools.product(frac_change_range, frac_high_range, frac_low_range)))
-        # self.outcomes = frac_change_range
+    def all_outcomes(self):
+        self.outcomes = [0, 1, 2, 3, 4, 5]
+        # self.outcomes = [0, 1]
 
     def likely_outcome(self, day_idx):
         # combine observations so that you can look before the test set starts
@@ -87,12 +108,13 @@ class predictStock(object):
         idx = self.test_dates.index(day)
         open_price = self.test_opens[idx]
         prediction = self.likely_outcome(idx)
-        close_prediction = open_price*(1+prediction[0]) 
+        prediction = prediction - 2 #change for symbols representing negative values
+        close_prediction = prediction
         # print(prediction)
         # print(self.test_opens[idx])
         # print(close_prediction)
         # print(self.test_close[idx])
-        return close_prediction, prediction[0]
+        return close_prediction, prediction
 
     #score model from observations in given range (must be within test data)
     def score_model(self,test_range):
@@ -117,18 +139,22 @@ class predictStock(object):
         return df
 
 if __name__ == '__main__':
-    train_dates = [datetime(2010, 1, 1), datetime(2020, 12, 31)]
+    train_dates = [datetime(2015, 1, 1), datetime(2020, 12, 31)]
     test_dates  = [datetime(2021, 1, 1), datetime(2021, 4, 15)] #does all dates in between
 
     stocks = ['DIS','AAPL', 'TSLA', 'SPY', 'AAL', 'JNJ', 'COST', 'PFE','TGT','GME']
 
     for s in stocks:
-        dis_ps = predictStock(s,train_dates,test_dates,n_hidden_states=6)
+        dis_ps = predictStock(s,train_dates,test_dates,n_hidden_states=4)
         # dis_ps.fit(100)
         dis_ps.fit(len(dis_ps.train_x))
+        print('-------')
+        print(s)
+        print('Trans Probability')
+        print(dis_ps.hmm.transmat_)
+        print('Emmission Probability')
+        print(dis_ps.hmm.emissionprob_)
         dis_ps.print_predictions()
-
-    
 
     # dis_ps.score_model([dis_ps.test_dates[0],dis_ps.test_dates[9]])
     # dis_ps.score_model([dis_ps.test_dates[10],dis_ps.test_dates[19]])

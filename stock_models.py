@@ -7,112 +7,114 @@ import csv
 import pandas as pd
 import numpy as np
 
-def get_stock_observations(ticker, start_y, start_m, start_d, end_y, end_m, end_d):
-    start_date= datetime(start_y, start_m, start_d)
-    end_date=datetime(end_y, end_m, end_d)
-    data = pdr.get_data_yahoo(ticker, start=start_date, end=end_date)
+def get_stock_observations(ticker, start_end):
+    data = pdr.get_data_yahoo(ticker, start=start_end[0], end=start_end[1])
     data.reset_index(inplace=True,drop=False)
     observations = []
     values = []
     date_list = []
+    opens = []
+    closes = []
     for t in range(data.shape[0]):
         open_price = data.iat[t, data.columns.get_loc('Open')]
         close_price = data.iat[t, data.columns.get_loc('Close')]
         date = data.iat[t, data.columns.get_loc('Date')]
         change = 100*(close_price - open_price) / open_price
-        if change >= 10:
-            obs = '10+'
+        if change >= 3:
+            obs = 'large_gainz'
             value = 3
-        elif change < 10 and change >= 5:
-            obs = '10:5'
+        elif change < 3 and change >= 2:
+            obs = 'medium_gainz'
             value = 2
-        elif change < 5 and change >= 1:
-            obs = '5:1'
+        elif change < 2 and change > 0:
+            obs = 'little_gainz'
             value = 1
-        elif change < 1 and change > -1:
-            obs = '1:-1'
+        elif change <= 0 and change > -2:
+            obs = 'little_loss'
             value = 0
-        elif change <= -1 and change > -5:
-            obs = '-1:-5'
+        elif change <= -2 and change > -3:
+            obs = 'medium_loss'
             value = -1
-        elif change <= -5 and change > -10:
-            obs = '-5:-10'
+        elif change <= -3:
+            obs = 'large_loss'
             value = -2
-        elif change <= -10:
-            obs = '-10+'
-            value = -3
+        # if change >= 0:
+        #     obs = 'gainz'
+        #     value = 1
+        # elif change < 0 :
+        #     obs = 'loss'
+        #     value = -1
         date_list.append(date.date())
         values.append(value)
         observations.append(obs)
+        opens.append(open_price)
+        closes.append(close_price)
 
-    d = {'Date': date_list, 'Values' : values}
-    plot_dataframe = pd.DataFrame(data = d)
+    return observations, date_list, values, opens, closes
 
-    return observations, plot_dataframe
+def predictStock(ticker, train_dates, test_dates):
+    train_x, train_dates, train_val, train_open, train_close = get_stock_observations(ticker, train_dates)
 
-def split_obs(full_arr, n_sections):
-    split_arr = np.array_split(full_arr,n_sections)
+    test_x, test_dates, test_val, test_open, test_close = get_stock_observations(ticker, test_dates)
 
-    monthly_arr = np.array_split(full_arr,12)
-    # initialize hmm for stocks
-    section_hmm = hmm("hmm_json_files/initial_stock.json")
+    new_hmm = hmm("hmm_json_files/initial_stock.json")
 
-    #train hmm on initial data
-    init_obs = split_arr[0]
-    section_hmm.runEM(init_obs)
-    prob = 0
+    new_hmm.runEM(train_x)
+     # combine observations so that you can look before the test set starts
+    full_obs = train_x+test_x
 
-    for t in range(1,n_sections):
-        prob += section_hmm.forward(split_arr[t])
-        print(t)
-        print(prob)
+    print(new_hmm.A)
+    print(new_hmm.B)
 
-    prob_avg = prob/n_sections
-    
-    return section_hmm, prob_avg
+    predictions = []
 
-def compare_likelihood(ticker, year_1, year_end):
+    for t in range(0,len(test_dates)):
+        full_id = t+len(train_x)
+        #find an array of previous observations to use for latency
+        prev_start_idx = full_id - 4
+        prev_end_idx = full_id
+        previous_data = full_obs[prev_start_idx: prev_end_idx]
+        outcome_score = []
+        for k in new_hmm.symbols:
+            print(k)
+            previous_data.append(k)
+            outcome_score.append(new_hmm.forward(previous_data))
+        curr_prediction = new_hmm.symbols[np.argmax(outcome_score)]
+        if 'large_gainz' in curr_prediction:
+            value = 3
+        elif 'medium_gainz' in curr_prediction:
+            value = 2
+        elif 'little_gainz' in curr_prediction:
+            value = 1
+        elif 'little_loss' in curr_prediction:
+            value = 0
+        elif 'medium_loss' in curr_prediction:
+            value = -1
+        elif 'large_loss' in curr_prediction:
+            value = -2
+        # if 'gainz' in curr_prediction:
+        #     value = 1
+        # elif 'loss' in curr_prediction:
+        #     value = -1
+        predictions.append(value)
 
-    # MONTHLY
-    #get observations for training
-    obs, df = get_stock_observations(ticker, year_1, 1, 1, year_end, 1, 1)
-    full_arr = np.array(obs)
+    d = {'Date': test_dates, "Actual Open": test_open, "Fractional Change Prediction": predictions, 'Predictions' : predictions, 'Actual Close' : test_close}
 
-    print('--------------')
-    print('Beginning testing for 12 one-month segments')
-    monthly_hmm, monthly_prob = split_obs(full_arr,12)
-    print('Comparing likelihood for ',ticker,' from 1/1/', year_1,' to 1/1/', year_end,': Prob = ',monthly_prob,' for 11 segments')
-    print('--------------')
-    print('Beginning testing for 6 two-month segments')
-    bi_hmm, bi_monthly_prob = split_obs(full_arr,6)
-    print('Comparing likelihood for ',ticker,' from 1/1/', year_1,' to 1/1/', year_end,': Prob = ',bi_monthly_prob,' for 5 segments')
-    print('--------------')
-    print('Beginning testing for 4 three-month segments')
-    three_month_hmm, three_month_prob = split_obs(full_arr,4)
-    print('Comparing likelihood for ',ticker,' from 1/1/', year_1,' to 1/1/', year_end,': Prob = ',three_month_prob,' for 3 segments')
-    print('--------------')
-    print('Beginning testing for 3 four-month segments')
-    four_month_hmm, four_month_prob = split_obs(full_arr,3)
-    print('Comparing likelihood for ',ticker,' from 1/1/', year_1,' to 1/1/', year_end,': Prob = ',four_month_prob,' for 2 segments')
+    df = pd.DataFrame(data = d)
+    filename = 'csv_files/'+ticker+'.csv'
+    df.to_csv(filename)
+    return predictions
 
 if __name__ == '__main__':
-    #get observations for given range of dates
-    compare_likelihood('DIS', 2020, 2021)
 
-    #intialize model with given hmm json file
-    # dis_hmm = hmm("hmm_json_files/initial_stock.json")
+    # # print(prob)
+    # train_dates = [datetime(2020, 1, 1), datetime(2020, 12, 31)]
+    # test_dates  = [datetime(2021, 1, 1), datetime(2021, 4, 15)] #does all dates in between
 
-    # #run EM to optimize model
-    # dis_hmm.runEM(dis_obs, 'hmm_json_files/disney_hmm.json')
 
-    # #get observations for given range of dates
-    # new_obs, new_df = get_stock_observations('DIS', 2020, 2, 1, 2020, 3, 1)
+    # stocks = ['DIS','AAPL', 'TSLA', 'SPY', 'AAL', 'JNJ', 'COST', 'PFE','TGT','GME']
 
-    # #put dataframe with dates and values from the df above into csv for matlab
-    # #df consists of dates (x axis) and measureable value to predict against
-    # # dis_df.to_csv('test.csv')
-
-    # prob = dis_hmm.forward(new_obs)
-
-    # print(prob)
+    # for s in stocks:
+    #     predictStock(s,train_dates,test_dates)
+    #     print()
 

@@ -176,7 +176,7 @@ class hmm():
                             print("State ",j," to state ",k,"didn't match")
 
                 break
-            elif counter == 100:
+            elif counter == 1000:
                 print('Completed ',counter,' iterations, no convergence')
                 break
 
